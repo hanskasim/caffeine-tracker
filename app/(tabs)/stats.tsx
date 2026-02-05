@@ -31,15 +31,25 @@ function BarChart({
   maxValue,
   total,
   unit,
+  isMonthView,
 }: {
-  data: { label: string; value: number }[];
+  data: { label: string; value: number; date?: Date }[];
   color: string;
   maxValue?: number;
   total: number;
   unit: string;
+  isMonthView?: boolean;
 }) {
+  const [selectedBar, setSelectedBar] = useState<number | null>(null);
   const max = maxValue || Math.max(...data.map((d) => d.value), 1);
   const yAxisLabels = [max, Math.round(max / 2), 0];
+
+  // For month view, only show labels for 1st, 8th, 15th, 22nd (weekly markers)
+  const shouldShowLabel = (index: number, label: string) => {
+    if (!isMonthView) return true;
+    const dayNum = parseInt(label);
+    return dayNum === 1 || dayNum === 8 || dayNum === 15 || dayNum === 22;
+  };
 
   return (
     <View style={chartStyles.container}>
@@ -56,7 +66,18 @@ function BarChart({
         {/* Bars */}
         <View style={chartStyles.barsRow}>
           {data.map((item, i) => (
-            <View key={i} style={chartStyles.barCol}>
+            <Pressable
+              key={i}
+              style={chartStyles.barCol}
+              onPress={() => setSelectedBar(selectedBar === i ? null : i)}
+            >
+              {selectedBar === i && item.value > 0 && (
+                <View style={[chartStyles.tooltip, { backgroundColor: color }]}>
+                  <Text style={chartStyles.tooltipText}>
+                    {unit === '$' ? `$${item.value.toFixed(2)}` : `${Math.round(item.value)}`}
+                  </Text>
+                </View>
+              )}
               <View style={chartStyles.barBg}>
                 <View
                   style={[
@@ -65,11 +86,14 @@ function BarChart({
                       height: `${Math.max((item.value / max) * 100, item.value > 0 ? 4 : 0)}%`,
                       backgroundColor: color,
                     },
+                    selectedBar === i && chartStyles.barFillSelected,
                   ]}
                 />
               </View>
-              <Text style={chartStyles.barLabel}>{item.label}</Text>
-            </View>
+              {shouldShowLabel(i, item.label) && (
+                <Text style={chartStyles.barLabel}>{item.label}</Text>
+              )}
+            </Pressable>
           ))}
         </View>
       </View>
@@ -134,6 +158,22 @@ const chartStyles = StyleSheet.create({
     color: '#A8A29E',
     marginTop: 6,
     fontWeight: '600',
+  },
+  barFillSelected: {
+    opacity: 0.8,
+  },
+  tooltip: {
+    position: 'absolute',
+    top: -4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  tooltipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFF',
   },
   totalRow: {
     flexDirection: 'row',
@@ -522,6 +562,7 @@ export default function StatsScreen() {
                   maxValue={DAILY_CAFFEINE_LIMIT}
                   total={totalCaffeine}
                   unit="mg"
+                  isMonthView={period === 'month'}
                 />
               </View>
 
@@ -533,6 +574,7 @@ export default function StatsScreen() {
                   color="#22C55E"
                   total={totalSpent}
                   unit="$"
+                  isMonthView={period === 'month'}
                 />
               </View>
             </>
