@@ -31,19 +31,21 @@ function BarChart({
   maxValue,
   total,
   unit,
+  isWeekView,
 }: {
   data: { label: string; value: number; fullDate: string }[];
   color: string;
   maxValue?: number;
   total: number;
   unit: string;
+  isWeekView?: boolean;
 }) {
   const [selectedBar, setSelectedBar] = useState<number | null>(null);
 
-  // Filter out days with no data
-  const filteredData = data.filter((d) => d.value > 0);
+  // Check if there's any data at all
+  const hasAnyData = data.some((d) => d.value > 0);
 
-  if (filteredData.length === 0) {
+  if (!hasAnyData) {
     return (
       <View style={chartStyles.emptyChart}>
         <Text style={chartStyles.emptyText}>No data to display</Text>
@@ -51,19 +53,19 @@ function BarChart({
     );
   }
 
-  const max = maxValue || Math.max(...filteredData.map((d) => d.value), 1);
+  const max = maxValue || Math.max(...data.map((d) => d.value), 1);
   const yAxisLabels = [max, Math.round(max / 2), 0];
 
   // Get first and last dates for x-axis
-  const firstDate = filteredData[0]?.label || '';
-  const lastDate = filteredData[filteredData.length - 1]?.label || '';
+  const firstDate = data[0]?.label || '';
+  const lastDate = data[data.length - 1]?.label || '';
 
-  const selectedItem = selectedBar !== null ? filteredData[selectedBar] : null;
+  const selectedItem = selectedBar !== null ? data[selectedBar] : null;
 
   return (
     <View style={chartStyles.container}>
       {/* Selected bar info popup */}
-      {selectedItem && (
+      {selectedItem && selectedItem.value > 0 && (
         <View style={[chartStyles.infoPopup, { borderColor: color }]}>
           <Text style={chartStyles.infoDate}>{selectedItem.fullDate}</Text>
           <Text style={[chartStyles.infoValue, { color }]}>
@@ -82,25 +84,30 @@ function BarChart({
           ))}
         </View>
 
-        {/* Bars */}
+        {/* Bars - show all days to maintain timeline gaps */}
         <View style={chartStyles.barsRow}>
-          {filteredData.map((item, i) => (
+          {data.map((item, i) => (
             <Pressable
               key={i}
-              style={chartStyles.barCol}
-              onPress={() => setSelectedBar(selectedBar === i ? null : i)}
+              style={[
+                chartStyles.barCol,
+                isWeekView && chartStyles.barColWeek,
+              ]}
+              onPress={() => item.value > 0 ? setSelectedBar(selectedBar === i ? null : i) : setSelectedBar(null)}
             >
               <View style={chartStyles.barBg}>
-                <View
-                  style={[
-                    chartStyles.barFill,
-                    {
-                      height: `${Math.max((item.value / max) * 100, 8)}%`,
-                      backgroundColor: color,
-                    },
-                    selectedBar === i && chartStyles.barFillSelected,
-                  ]}
-                />
+                {item.value > 0 && (
+                  <View
+                    style={[
+                      chartStyles.barFill,
+                      {
+                        height: `${Math.max((item.value / max) * 100, 8)}%`,
+                        backgroundColor: color,
+                      },
+                      selectedBar === i && chartStyles.barFillSelected,
+                    ]}
+                  />
+                )}
               </View>
             </Pressable>
           ))}
@@ -183,7 +190,9 @@ const chartStyles = StyleSheet.create({
     alignItems: 'center',
     height: '100%',
     justifyContent: 'flex-end',
-    maxWidth: 24,
+  },
+  barColWeek: {
+    maxWidth: 36,
   },
   barBg: {
     width: '100%',
@@ -592,6 +601,7 @@ export default function StatsScreen() {
                   maxValue={DAILY_CAFFEINE_LIMIT}
                   total={totalCaffeine}
                   unit="mg"
+                  isWeekView={period === 'week'}
                 />
               </View>
 
@@ -603,6 +613,7 @@ export default function StatsScreen() {
                   color="#22C55E"
                   total={totalSpent}
                   unit="$"
+                  isWeekView={period === 'week'}
                 />
               </View>
             </>
