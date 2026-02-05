@@ -31,28 +31,47 @@ function BarChart({
   maxValue,
   total,
   unit,
-  isMonthView,
 }: {
-  data: { label: string; value: number; date?: Date }[];
+  data: { label: string; value: number; fullDate: string }[];
   color: string;
   maxValue?: number;
   total: number;
   unit: string;
-  isMonthView?: boolean;
 }) {
   const [selectedBar, setSelectedBar] = useState<number | null>(null);
-  const max = maxValue || Math.max(...data.map((d) => d.value), 1);
+
+  // Filter out days with no data
+  const filteredData = data.filter((d) => d.value > 0);
+
+  if (filteredData.length === 0) {
+    return (
+      <View style={chartStyles.emptyChart}>
+        <Text style={chartStyles.emptyText}>No data to display</Text>
+      </View>
+    );
+  }
+
+  const max = maxValue || Math.max(...filteredData.map((d) => d.value), 1);
   const yAxisLabels = [max, Math.round(max / 2), 0];
 
-  // For month view, only show labels for 1st, 8th, 15th, 22nd (weekly markers)
-  const shouldShowLabel = (index: number, label: string) => {
-    if (!isMonthView) return true;
-    const dayNum = parseInt(label);
-    return dayNum === 1 || dayNum === 8 || dayNum === 15 || dayNum === 22;
-  };
+  // Get first and last dates for x-axis
+  const firstDate = filteredData[0]?.label || '';
+  const lastDate = filteredData[filteredData.length - 1]?.label || '';
+
+  const selectedItem = selectedBar !== null ? filteredData[selectedBar] : null;
 
   return (
     <View style={chartStyles.container}>
+      {/* Selected bar info popup */}
+      {selectedItem && (
+        <View style={[chartStyles.infoPopup, { borderColor: color }]}>
+          <Text style={chartStyles.infoDate}>{selectedItem.fullDate}</Text>
+          <Text style={[chartStyles.infoValue, { color }]}>
+            {unit === '$' ? `$${selectedItem.value.toFixed(2)}` : `${Math.round(selectedItem.value)}${unit}`}
+          </Text>
+        </View>
+      )}
+
       <View style={chartStyles.chartRow}>
         {/* Y-axis labels */}
         <View style={chartStyles.yAxis}>
@@ -65,37 +84,33 @@ function BarChart({
 
         {/* Bars */}
         <View style={chartStyles.barsRow}>
-          {data.map((item, i) => (
+          {filteredData.map((item, i) => (
             <Pressable
               key={i}
               style={chartStyles.barCol}
               onPress={() => setSelectedBar(selectedBar === i ? null : i)}
             >
-              {selectedBar === i && item.value > 0 && (
-                <View style={[chartStyles.tooltip, { backgroundColor: color }]}>
-                  <Text style={chartStyles.tooltipText}>
-                    {unit === '$' ? `$${item.value.toFixed(2)}` : `${Math.round(item.value)}`}
-                  </Text>
-                </View>
-              )}
               <View style={chartStyles.barBg}>
                 <View
                   style={[
                     chartStyles.barFill,
                     {
-                      height: `${Math.max((item.value / max) * 100, item.value > 0 ? 4 : 0)}%`,
+                      height: `${Math.max((item.value / max) * 100, 8)}%`,
                       backgroundColor: color,
                     },
                     selectedBar === i && chartStyles.barFillSelected,
                   ]}
                 />
               </View>
-              {shouldShowLabel(i, item.label) && (
-                <Text style={chartStyles.barLabel}>{item.label}</Text>
-              )}
             </Pressable>
           ))}
         </View>
+      </View>
+
+      {/* X-axis with first and last dates */}
+      <View style={chartStyles.xAxis}>
+        <Text style={chartStyles.xAxisLabel}>{firstDate}</Text>
+        <Text style={chartStyles.xAxisLabel}>{lastDate}</Text>
       </View>
 
       {/* Total */}
@@ -112,6 +127,34 @@ function BarChart({
 const chartStyles = StyleSheet.create({
   container: {
     marginTop: 8,
+  },
+  emptyChart: {
+    height: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 13,
+    color: '#A8A29E',
+  },
+  infoPopup: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 2,
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  infoDate: {
+    fontSize: 13,
+    color: '#78350F',
+    fontWeight: '600',
+  },
+  infoValue: {
+    fontSize: 18,
+    fontWeight: '800',
   },
   chartRow: {
     flexDirection: 'row',
@@ -132,7 +175,7 @@ const chartStyles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 3,
+    gap: 4,
     height: 120,
   },
   barCol: {
@@ -140,9 +183,10 @@ const chartStyles = StyleSheet.create({
     alignItems: 'center',
     height: '100%',
     justifyContent: 'flex-end',
+    maxWidth: 24,
   },
   barBg: {
-    width: '70%',
+    width: '100%',
     flex: 1,
     backgroundColor: '#F5F5F4',
     borderRadius: 4,
@@ -153,27 +197,19 @@ const chartStyles = StyleSheet.create({
     width: '100%',
     borderRadius: 4,
   },
-  barLabel: {
-    fontSize: 9,
-    color: '#A8A29E',
-    marginTop: 6,
-    fontWeight: '600',
-  },
   barFillSelected: {
-    opacity: 0.8,
+    opacity: 0.7,
   },
-  tooltip: {
-    position: 'absolute',
-    top: -4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    zIndex: 10,
+  xAxis: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginLeft: 32,
+    marginTop: 8,
   },
-  tooltipText: {
+  xAxisLabel: {
     fontSize: 10,
-    fontWeight: '700',
-    color: '#FFF',
+    color: '#A8A29E',
+    fontWeight: '600',
   },
   totalRow: {
     flexDirection: 'row',
@@ -411,11 +447,8 @@ export default function StatsScreen() {
       isSameDay(new Date(d.timestamp), day)
     );
     return {
-      label: selectedDate
-        ? format(day, 'EEE')
-        : period === 'week'
-          ? format(day, 'EEE')
-          : format(day, 'd'),
+      label: format(day, 'MMM d'),
+      fullDate: format(day, 'EEE, MMM d'),
       value: dayDrinks.reduce((s, d) => s + d.caffeine_mg, 0),
     };
   });
@@ -425,11 +458,8 @@ export default function StatsScreen() {
       isSameDay(new Date(d.timestamp), day)
     );
     return {
-      label: selectedDate
-        ? format(day, 'EEE')
-        : period === 'week'
-          ? format(day, 'EEE')
-          : format(day, 'd'),
+      label: format(day, 'MMM d'),
+      fullDate: format(day, 'EEE, MMM d'),
       value: dayDrinks.reduce((s, d) => s + d.cost, 0),
     };
   });
@@ -562,7 +592,6 @@ export default function StatsScreen() {
                   maxValue={DAILY_CAFFEINE_LIMIT}
                   total={totalCaffeine}
                   unit="mg"
-                  isMonthView={period === 'month'}
                 />
               </View>
 
@@ -574,7 +603,6 @@ export default function StatsScreen() {
                   color="#22C55E"
                   total={totalSpent}
                   unit="$"
-                  isMonthView={period === 'month'}
                 />
               </View>
             </>
