@@ -1,8 +1,14 @@
 import { useState } from 'react';
-import { ScrollView, View, Text, Pressable, StyleSheet } from 'react-native';
+import {
+  ScrollView,
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  Modal,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../lib/store';
-import { Drink } from '../../lib/types';
 import { DRINK_TYPE_EMOJI, DAILY_CAFFEINE_LIMIT } from '../../lib/constants';
 import {
   format,
@@ -12,6 +18,9 @@ import {
   startOfMonth,
   endOfMonth,
   isSameDay,
+  isToday,
+  startOfDay,
+  endOfDay,
 } from 'date-fns';
 
 type Period = 'week' | 'month';
@@ -20,35 +29,57 @@ function BarChart({
   data,
   color,
   maxValue,
+  total,
+  unit,
 }: {
   data: { label: string; value: number }[];
   color: string;
   maxValue?: number;
+  total: number;
+  unit: string;
 }) {
   const max = maxValue || Math.max(...data.map((d) => d.value), 1);
+  const yAxisLabels = [max, Math.round(max / 2), 0];
 
   return (
     <View style={chartStyles.container}>
-      <View style={chartStyles.barsRow}>
-        {data.map((item, i) => (
-          <View key={i} style={chartStyles.barCol}>
-            <Text style={chartStyles.barValue}>
-              {item.value > 0 ? Math.round(item.value) : ''}
+      <View style={chartStyles.chartRow}>
+        {/* Y-axis labels */}
+        <View style={chartStyles.yAxis}>
+          {yAxisLabels.map((val, i) => (
+            <Text key={i} style={chartStyles.yAxisLabel}>
+              {val}
             </Text>
-            <View style={chartStyles.barBg}>
-              <View
-                style={[
-                  chartStyles.barFill,
-                  {
-                    height: `${Math.max((item.value / max) * 100, item.value > 0 ? 4 : 0)}%`,
-                    backgroundColor: color,
-                  },
-                ]}
-              />
+          ))}
+        </View>
+
+        {/* Bars */}
+        <View style={chartStyles.barsRow}>
+          {data.map((item, i) => (
+            <View key={i} style={chartStyles.barCol}>
+              <View style={chartStyles.barBg}>
+                <View
+                  style={[
+                    chartStyles.barFill,
+                    {
+                      height: `${Math.max((item.value / max) * 100, item.value > 0 ? 4 : 0)}%`,
+                      backgroundColor: color,
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={chartStyles.barLabel}>{item.label}</Text>
             </View>
-            <Text style={chartStyles.barLabel}>{item.label}</Text>
-          </View>
-        ))}
+          ))}
+        </View>
+      </View>
+
+      {/* Total */}
+      <View style={chartStyles.totalRow}>
+        <Text style={chartStyles.totalLabel}>Total:</Text>
+        <Text style={[chartStyles.totalValue, { color }]}>
+          {unit === '$' ? `$${total.toFixed(2)}` : `${Math.round(total)}${unit}`}
+        </Text>
       </View>
     </View>
   );
@@ -58,23 +89,33 @@ const chartStyles = StyleSheet.create({
   container: {
     marginTop: 8,
   },
+  chartRow: {
+    flexDirection: 'row',
+  },
+  yAxis: {
+    width: 32,
+    height: 120,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    paddingRight: 6,
+  },
+  yAxisLabel: {
+    fontSize: 9,
+    color: '#A8A29E',
+    fontWeight: '600',
+  },
   barsRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 4,
-    height: 140,
+    gap: 3,
+    height: 120,
   },
   barCol: {
     flex: 1,
     alignItems: 'center',
     height: '100%',
     justifyContent: 'flex-end',
-  },
-  barValue: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: '#78716C',
-    marginBottom: 4,
   },
   barBg: {
     width: '70%',
@@ -89,23 +130,232 @@ const chartStyles = StyleSheet.create({
     borderRadius: 4,
   },
   barLabel: {
-    fontSize: 10,
+    fontSize: 9,
     color: '#A8A29E',
     marginTop: 6,
     fontWeight: '600',
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    marginTop: 12,
+    gap: 6,
+  },
+  totalLabel: {
+    fontSize: 12,
+    color: '#78716C',
+    fontWeight: '600',
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+});
+
+// Mini Calendar Component
+function MiniCalendar({
+  visible,
+  onClose,
+  onSelectDate,
+  daysWithLogs,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelectDate: (date: Date) => void;
+  daysWithLogs: Set<string>;
+}) {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEnd = endOfMonth(now);
+  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+  // Get day of week for first day (0 = Sunday)
+  const firstDayOfWeek = monthStart.getDay();
+  const paddingDays = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1; // Monday start
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <Pressable style={calendarStyles.overlay} onPress={onClose}>
+        <View style={calendarStyles.container}>
+          <Text style={calendarStyles.monthTitle}>
+            {format(now, 'MMMM yyyy')}
+          </Text>
+
+          {/* Day headers */}
+          <View style={calendarStyles.weekRow}>
+            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+              <Text key={i} style={calendarStyles.dayHeader}>
+                {d}
+              </Text>
+            ))}
+          </View>
+
+          {/* Calendar grid */}
+          <View style={calendarStyles.grid}>
+            {/* Padding for first week */}
+            {Array.from({ length: paddingDays }).map((_, i) => (
+              <View key={`pad-${i}`} style={calendarStyles.dayCell} />
+            ))}
+
+            {days.map((day) => {
+              const dateKey = format(day, 'yyyy-MM-dd');
+              const hasLog = daysWithLogs.has(dateKey);
+              const isTodayDate = isToday(day);
+
+              return (
+                <Pressable
+                  key={dateKey}
+                  style={[
+                    calendarStyles.dayCell,
+                    isTodayDate && calendarStyles.todayCell,
+                  ]}
+                  onPress={() => {
+                    onSelectDate(day);
+                    onClose();
+                  }}
+                >
+                  <Text
+                    style={[
+                      calendarStyles.dayText,
+                      isTodayDate && calendarStyles.todayText,
+                    ]}
+                  >
+                    {format(day, 'd')}
+                  </Text>
+                  {hasLog && <View style={calendarStyles.logDot} />}
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Pressable style={calendarStyles.closeBtn} onPress={onClose}>
+            <Text style={calendarStyles.closeBtnText}>Close</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+const calendarStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  container: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 340,
+  },
+  monthTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#78350F',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  dayHeader: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#A8A29E',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  dayCell: {
+    width: '14.28%',
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayCell: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 20,
+  },
+  dayText: {
+    fontSize: 14,
+    color: '#78350F',
+    fontWeight: '500',
+  },
+  todayText: {
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  logDot: {
+    position: 'absolute',
+    bottom: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#F59E0B',
+  },
+  closeBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  closeBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#D97706',
   },
 });
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
   const [period, setPeriod] = useState<Period>('week');
-  const { getWeekDrinks, getMonthDrinks } = useStore();
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const { drinks, getWeekDrinks, getMonthDrinks } = useStore();
 
-  const drinks = period === 'week' ? getWeekDrinks() : getMonthDrinks();
+  // Get filtered drinks based on selection
+  const getFilteredDrinks = () => {
+    if (selectedDate) {
+      const dayStart = startOfDay(selectedDate);
+      const dayEnd = endOfDay(selectedDate);
+      return drinks.filter((d) => {
+        const t = new Date(d.timestamp);
+        return t >= dayStart && t <= dayEnd;
+      });
+    }
+    return period === 'week' ? getWeekDrinks() : getMonthDrinks();
+  };
+
+  const filteredDrinks = getFilteredDrinks();
 
   const now = new Date();
-  const dateRange =
-    period === 'week'
+
+  // Date range for display
+  const getDateRangeText = () => {
+    if (selectedDate) {
+      return format(selectedDate, 'EEEE, MMM d, yyyy');
+    }
+    if (period === 'week') {
+      const start = startOfWeek(now, { weekStartsOn: 1 });
+      const end = endOfWeek(now, { weekStartsOn: 1 });
+      return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+    }
+    return format(now, 'MMMM yyyy');
+  };
+
+  const dateRange = selectedDate
+    ? [selectedDate]
+    : period === 'week'
       ? eachDayOfInterval({
           start: startOfWeek(now, { weekStartsOn: 1 }),
           end: endOfWeek(now, { weekStartsOn: 1 }),
@@ -115,14 +365,15 @@ export default function StatsScreen() {
           end: endOfMonth(now),
         });
 
-  // Aggregate by day
+  // Aggregate by day for charts
   const caffeineByDay = dateRange.map((day) => {
-    const dayDrinks = drinks.filter((d) =>
+    const dayDrinks = filteredDrinks.filter((d) =>
       isSameDay(new Date(d.timestamp), day)
     );
     return {
-      label:
-        period === 'week'
+      label: selectedDate
+        ? format(day, 'EEE')
+        : period === 'week'
           ? format(day, 'EEE')
           : format(day, 'd'),
       value: dayDrinks.reduce((s, d) => s + d.caffeine_mg, 0),
@@ -130,12 +381,13 @@ export default function StatsScreen() {
   });
 
   const spendingByDay = dateRange.map((day) => {
-    const dayDrinks = drinks.filter((d) =>
+    const dayDrinks = filteredDrinks.filter((d) =>
       isSameDay(new Date(d.timestamp), day)
     );
     return {
-      label:
-        period === 'week'
+      label: selectedDate
+        ? format(day, 'EEE')
+        : period === 'week'
           ? format(day, 'EEE')
           : format(day, 'd'),
       value: dayDrinks.reduce((s, d) => s + d.cost, 0),
@@ -143,21 +395,24 @@ export default function StatsScreen() {
   });
 
   // Summary stats
-  const totalCaffeine = drinks.reduce((s, d) => s + d.caffeine_mg, 0);
-  const totalSpent = drinks.reduce((s, d) => s + d.cost, 0);
-  const totalDrinks = drinks.length;
+  const totalCaffeine = filteredDrinks.reduce((s, d) => s + d.caffeine_mg, 0);
+  const totalSpent = filteredDrinks.reduce((s, d) => s + d.cost, 0);
+  const totalDrinks = filteredDrinks.length;
   const daysWithDrinks = new Set(
-    drinks.map((d) => format(new Date(d.timestamp), 'yyyy-MM-dd'))
+    filteredDrinks.map((d) => format(new Date(d.timestamp), 'yyyy-MM-dd'))
   ).size;
-  const avgDailyCaffeine = daysWithDrinks > 0 ? totalCaffeine / daysWithDrinks : 0;
+  const avgDailyCaffeine =
+    daysWithDrinks > 0 ? totalCaffeine / daysWithDrinks : 0;
   const avgDailySpent = daysWithDrinks > 0 ? totalSpent / daysWithDrinks : 0;
 
   // Most expensive drinks
-  const sortedByCost = [...drinks].sort((a, b) => b.cost - a.cost).slice(0, 5);
+  const sortedByCost = [...filteredDrinks]
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, 5);
 
   // Peak hours
   const hourCounts: Record<number, number> = {};
-  drinks.forEach((d) => {
+  filteredDrinks.forEach((d) => {
     const h = new Date(d.timestamp).getHours();
     hourCounts[h] = (hourCounts[h] || 0) + 1;
   });
@@ -165,37 +420,73 @@ export default function StatsScreen() {
     (a, b) => Number(b[1]) - Number(a[1])
   )[0];
 
+  // Days with logs for calendar
+  const daysWithLogs = new Set(
+    drinks.map((d) => format(new Date(d.timestamp), 'yyyy-MM-dd'))
+  );
+
+  const handleDateSelect = (date: Date) => {
+    setSelectedDate(date);
+  };
+
+  const clearDateFilter = () => {
+    setSelectedDate(null);
+  };
+
   return (
     <ScrollView
       style={[styles.container, { paddingTop: insets.top }]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.title}>Stats & Insights</Text>
-
-      {/* Period Tabs */}
-      <View style={styles.tabRow}>
-        {(['week', 'month'] as Period[]).map((p) => (
-          <Pressable
-            key={p}
-            style={[styles.tab, period === p && styles.tabActive]}
-            onPress={() => setPeriod(p)}
-          >
-            <Text
-              style={[styles.tabText, period === p && styles.tabTextActive]}
-            >
-              {p === 'week' ? 'This Week' : 'This Month'}
-            </Text>
-          </Pressable>
-        ))}
+      {/* Header with Calendar Button */}
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Stats & Insights</Text>
+        <Pressable
+          style={styles.calendarBtn}
+          onPress={() => setShowCalendar(true)}
+        >
+          <Text style={styles.calendarBtnText}>📅</Text>
+        </Pressable>
       </View>
 
-      {drinks.length === 0 ? (
+      {/* Date Range Subtitle */}
+      <Text style={styles.dateRange}>{getDateRangeText()}</Text>
+
+      {/* Clear filter button if date selected */}
+      {selectedDate && (
+        <Pressable style={styles.clearFilterBtn} onPress={clearDateFilter}>
+          <Text style={styles.clearFilterText}>✕ Clear date filter</Text>
+        </Pressable>
+      )}
+
+      {/* Period Tabs (hidden when specific date selected) */}
+      {!selectedDate && (
+        <View style={styles.tabRow}>
+          {(['week', 'month'] as Period[]).map((p) => (
+            <Pressable
+              key={p}
+              style={[styles.tab, period === p && styles.tabActive]}
+              onPress={() => setPeriod(p)}
+            >
+              <Text
+                style={[styles.tabText, period === p && styles.tabTextActive]}
+              >
+                {p === 'week' ? 'Week' : 'Month'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {filteredDrinks.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyEmoji}>📊</Text>
           <Text style={styles.emptyText}>No data yet</Text>
           <Text style={styles.emptySubtext}>
-            Start logging drinks to see your patterns!
+            {selectedDate
+              ? 'No drinks logged on this day'
+              : 'Start logging drinks to see your patterns!'}
           </Text>
         </View>
       ) : (
@@ -203,38 +494,49 @@ export default function StatsScreen() {
           {/* Summary Cards */}
           <View style={styles.summaryRow}>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Total Drinks</Text>
+              <Text style={styles.summaryLabel}>Drinks</Text>
               <Text style={styles.summaryValue}>{totalDrinks}</Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Avg Daily mg</Text>
+              <Text style={styles.summaryLabel}>Caffeine</Text>
               <Text style={styles.summaryValue}>
-                {Math.round(avgDailyCaffeine)}
+                {Math.round(totalCaffeine)}
+                <Text style={styles.summaryUnit}>mg</Text>
               </Text>
             </View>
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Avg Daily $</Text>
-              <Text style={styles.summaryValue}>
-                ${avgDailySpent.toFixed(2)}
-              </Text>
+              <Text style={styles.summaryLabel}>Spent</Text>
+              <Text style={styles.summaryValue}>${totalSpent.toFixed(2)}</Text>
             </View>
           </View>
 
-          {/* Caffeine Chart */}
-          <View style={styles.chartCard}>
-            <Text style={styles.chartTitle}>Caffeine (mg)</Text>
-            <BarChart
-              data={caffeineByDay}
-              color="#F59E0B"
-              maxValue={DAILY_CAFFEINE_LIMIT}
-            />
-          </View>
+          {/* Charts only for week/month view, not single day */}
+          {!selectedDate && (
+            <>
+              {/* Caffeine Chart */}
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Caffeine (mg)</Text>
+                <BarChart
+                  data={caffeineByDay}
+                  color="#F59E0B"
+                  maxValue={DAILY_CAFFEINE_LIMIT}
+                  total={totalCaffeine}
+                  unit="mg"
+                />
+              </View>
 
-          {/* Spending Chart */}
-          <View style={styles.chartCard}>
-            <Text style={styles.chartTitle}>Spending ($)</Text>
-            <BarChart data={spendingByDay} color="#22C55E" />
-          </View>
+              {/* Spending Chart */}
+              <View style={styles.chartCard}>
+                <Text style={styles.chartTitle}>Spending ($)</Text>
+                <BarChart
+                  data={spendingByDay}
+                  color="#22C55E"
+                  total={totalSpent}
+                  unit="$"
+                />
+              </View>
+            </>
+          )}
 
           {/* Peak Time */}
           {peakHour && (
@@ -243,38 +545,46 @@ export default function StatsScreen() {
               <View>
                 <Text style={styles.insightTitle}>Peak Caffeine Time</Text>
                 <Text style={styles.insightText}>
-                  You drink the most at{' '}
-                  {format(
-                    new Date(2000, 0, 1, Number(peakHour[0])),
-                    'h a'
-                  )}
+                  {selectedDate ? 'Most drinks' : 'You drink the most'} at{' '}
+                  {format(new Date(2000, 0, 1, Number(peakHour[0])), 'h a')}
                 </Text>
               </View>
             </View>
           )}
 
-          {/* Total Spent */}
-          <View style={styles.insightCard}>
-            <Text style={styles.insightEmoji}>💰</Text>
-            <View>
-              <Text style={styles.insightTitle}>
-                Total Spent ({period === 'week' ? 'Week' : 'Month'})
-              </Text>
-              <Text style={styles.insightText}>${totalSpent.toFixed(2)}</Text>
+          {/* Averages (only for multi-day views) */}
+          {!selectedDate && daysWithDrinks > 1 && (
+            <View style={styles.insightCard}>
+              <Text style={styles.insightEmoji}>📈</Text>
+              <View>
+                <Text style={styles.insightTitle}>Daily Averages</Text>
+                <Text style={styles.insightText}>
+                  {Math.round(avgDailyCaffeine)}mg caffeine · $
+                  {avgDailySpent.toFixed(2)} spent
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Most Expensive */}
           {sortedByCost.length > 0 && (
             <View style={styles.listCard}>
-              <Text style={styles.chartTitle}>Most Expensive Drinks</Text>
+              <Text style={styles.chartTitle}>
+                {selectedDate ? 'Drinks' : 'Most Expensive Drinks'}
+              </Text>
               {sortedByCost.map((d, i) => (
                 <View key={d.id} style={styles.listRow}>
                   <Text style={styles.listRank}>#{i + 1}</Text>
                   <Text style={styles.listEmoji}>
                     {DRINK_TYPE_EMOJI[d.type]}
                   </Text>
-                  <Text style={styles.listName}>{d.name}</Text>
+                  <View style={styles.listInfo}>
+                    <Text style={styles.listName}>{d.name}</Text>
+                    <Text style={styles.listMeta}>
+                      {format(new Date(d.timestamp), 'h:mm a')} ·{' '}
+                      {d.caffeine_mg}mg
+                    </Text>
+                  </View>
                   <Text style={styles.listValue}>${d.cost.toFixed(2)}</Text>
                 </View>
               ))}
@@ -284,6 +594,14 @@ export default function StatsScreen() {
       )}
 
       <View style={{ height: 30 }} />
+
+      {/* Calendar Modal */}
+      <MiniCalendar
+        visible={showCalendar}
+        onClose={() => setShowCalendar(false)}
+        onSelectDate={handleDateSelect}
+        daysWithLogs={daysWithLogs}
+      />
     </ScrollView>
   );
 }
@@ -297,13 +615,49 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+  },
   title: {
     fontSize: 28,
     fontWeight: '700',
     color: '#78350F',
     fontFamily: 'Georgia',
-    marginTop: 8,
+  },
+  calendarBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#FFF',
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarBtnText: {
+    fontSize: 20,
+  },
+  dateRange: {
+    fontSize: 14,
+    color: '#B45309',
+    marginTop: 4,
     marginBottom: 16,
+  },
+  clearFilterBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  clearFilterText: {
+    fontSize: 13,
+    color: '#D97706',
+    fontWeight: '600',
   },
   tabRow: {
     flexDirection: 'row',
@@ -377,9 +731,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   summaryValue: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '800',
     color: '#78350F',
+  },
+  summaryUnit: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   chartCard: {
     backgroundColor: '#FFF',
@@ -449,11 +807,18 @@ const styles = StyleSheet.create({
   listEmoji: {
     fontSize: 20,
   },
-  listName: {
+  listInfo: {
     flex: 1,
+  },
+  listName: {
     fontSize: 14,
     fontWeight: '600',
     color: '#78350F',
+  },
+  listMeta: {
+    fontSize: 11,
+    color: '#B45309',
+    marginTop: 2,
   },
   listValue: {
     fontSize: 14,

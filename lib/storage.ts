@@ -21,6 +21,15 @@ export async function deleteDrink(id: string): Promise<void> {
   await AsyncStorage.setItem(DRINKS_KEY, JSON.stringify(filtered));
 }
 
+export async function updateDrink(updatedDrink: Drink): Promise<void> {
+  const drinks = await getAllDrinks();
+  const index = drinks.findIndex((d) => d.id === updatedDrink.id);
+  if (index !== -1) {
+    drinks[index] = updatedDrink;
+    await AsyncStorage.setItem(DRINKS_KEY, JSON.stringify(drinks));
+  }
+}
+
 export async function getDrinksByDateRange(
   startDate: Date,
   endDate: Date

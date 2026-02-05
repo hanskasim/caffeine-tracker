@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Drink } from './types';
-import { getAllDrinks, saveDrink, deleteDrink, generateId } from './storage';
+import { getAllDrinks, saveDrink, deleteDrink, updateDrink, generateId } from './storage';
 import {
   startOfDay,
   endOfDay,
@@ -16,7 +16,9 @@ interface CaffeineStore {
 
   loadDrinks: () => Promise<void>;
   addDrink: (drink: Omit<Drink, 'id'>) => Promise<void>;
+  editDrink: (drink: Drink) => Promise<void>;
   removeDrink: (id: string) => Promise<void>;
+  getDrinkById: (id: string) => Drink | undefined;
 
   getTodayDrinks: () => Drink[];
   getWeekDrinks: () => Drink[];
@@ -40,9 +42,20 @@ export const useStore = create<CaffeineStore>((set, get) => ({
     set((state) => ({ drinks: [...state.drinks, drink] }));
   },
 
+  editDrink: async (drink) => {
+    await updateDrink(drink);
+    set((state) => ({
+      drinks: state.drinks.map((d) => (d.id === drink.id ? drink : d)),
+    }));
+  },
+
   removeDrink: async (id) => {
     await deleteDrink(id);
     set((state) => ({ drinks: state.drinks.filter((d) => d.id !== id) }));
+  },
+
+  getDrinkById: (id) => {
+    return get().drinks.find((d) => d.id === id);
   },
 
   getTodayDrinks: () => {

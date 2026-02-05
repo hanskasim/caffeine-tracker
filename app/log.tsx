@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,10 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
 import { useStore } from '../lib/store';
 import { DrinkType } from '../lib/types';
 import {
@@ -25,13 +27,31 @@ const DRINK_TYPES: DrinkType[] = ['coffee', 'tea', 'energy_drink', 'boba'];
 export default function LogDrinkScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { addDrink, getRecentDrinkNames } = useStore();
+  const params = useLocalSearchParams<{ editId?: string }>();
+  const { addDrink, editDrink, getDrinkById, getRecentDrinkNames } = useStore();
+
+  const editingDrink = params.editId ? getDrinkById(params.editId) : undefined;
+  const isEditing = !!editingDrink;
 
   const [selectedType, setSelectedType] = useState<DrinkType>('coffee');
   const [name, setName] = useState('');
   const [caffeine, setCaffeine] = useState('');
   const [cost, setCost] = useState('');
   const [location, setLocation] = useState('');
+  const [timestamp, setTimestamp] = useState(new Date());
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Pre-fill form when editing
+  useEffect(() => {
+    if (editingDrink) {
+      setSelectedType(editingDrink.type);
+      setName(editingDrink.name);
+      setCaffeine(editingDrink.caffeine_mg.toString());
+      setCost(editingDrink.cost.toString());
+      setLocation(editingDrink.location || '');
+      setTimestamp(new Date(editingDrink.timestamp));
+    }
+  }, [editingDrink]);
 
   const recentNames = getRecentDrinkNames();
 
@@ -54,16 +74,35 @@ export default function LogDrinkScreen() {
     const caffeineNum = parseInt(caffeine) || 0;
     const costNum = parseFloat(cost) || 0;
 
-    await addDrink({
-      type: selectedType,
-      name: name.trim(),
-      caffeine_mg: caffeineNum,
-      cost: costNum,
-      timestamp: new Date().toISOString(),
-      location: location.trim() || undefined,
-    });
+    if (isEditing && editingDrink) {
+      await editDrink({
+        ...editingDrink,
+        type: selectedType,
+        name: name.trim(),
+        caffeine_mg: caffeineNum,
+        cost: costNum,
+        timestamp: timestamp.toISOString(),
+        location: location.trim() || undefined,
+      });
+    } else {
+      await addDrink({
+        type: selectedType,
+        name: name.trim(),
+        caffeine_mg: caffeineNum,
+        cost: costNum,
+        timestamp: timestamp.toISOString(),
+        location: location.trim() || undefined,
+      });
+    }
 
     router.back();
+  };
+
+  const handleTimeChange = (_event: any, selectedDate?: Date) => {
+    setShowTimePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setTimestamp(selectedDate);
+    }
   };
 
   return (
@@ -85,7 +124,9 @@ export default function LogDrinkScreen() {
           <Pressable onPress={() => router.back()} style={styles.cancelBtn}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
-          <Text style={styles.headerTitle}>Log a Drink</Text>
+          <Text style={styles.headerTitle}>
+            {isEditing ? 'Edit Drink' : 'Log a Drink'}
+          </Text>
           <View style={{ width: 60 }} />
         </View>
 
@@ -101,8 +142,10 @@ export default function LogDrinkScreen() {
               ]}
               onPress={() => {
                 setSelectedType(type);
-                setName('');
-                setCaffeine('');
+                if (!isEditing) {
+                  setName('');
+                  setCaffeine('');
+                }
               }}
             >
               <Text style={styles.typeEmoji}>{DRINK_TYPE_EMOJI[type]}</Text>
@@ -150,7 +193,7 @@ export default function LogDrinkScreen() {
         </ScrollView>
 
         {/* Recent Drinks */}
-        {recentNames.length > 0 && (
+        {recentNames.length > 0 && !isEditing && (
           <>
             <Text style={styles.sectionLabel}>RECENT</Text>
             <ScrollView
@@ -224,6 +267,28 @@ export default function LogDrinkScreen() {
           </View>
         </View>
 
+        {/* Time Picker */}
+        <Text style={styles.sectionLabel}>TIME</Text>
+        <Pressable
+          style={styles.timeButton}
+          onPress={() => setShowTimePicker(true)}
+        >
+          <Text style={styles.timeButtonText}>
+            {format(timestamp, 'MMM d, yyyy')} at {format(timestamp, 'h:mm a')}
+          </Text>
+          <Text style={styles.timeButtonHint}>Tap to change</Text>
+        </Pressable>
+
+        {showTimePicker && (
+          <DateTimePicker
+            value={timestamp}
+            mode="datetime"
+            display="spinner"
+            onChange={handleTimeChange}
+            maximumDate={new Date()}
+          />
+        )}
+
         <Text style={styles.sectionLabel}>LOCATION (optional)</Text>
         <TextInput
           style={styles.input}
@@ -241,7 +306,9 @@ export default function LogDrinkScreen() {
           ]}
           onPress={handleSave}
         >
-          <Text style={styles.saveBtnText}>Save Drink</Text>
+          <Text style={styles.saveBtnText}>
+            {isEditing ? 'Save Changes' : 'Save Drink'}
+          </Text>
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -382,6 +449,26 @@ const styles = StyleSheet.create({
   },
   formHalf: {
     flex: 1,
+  },
+  timeButton: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FDE68A',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeButtonText: {
+    fontSize: 16,
+    color: '#78350F',
+    fontWeight: '500',
+  },
+  timeButtonHint: {
+    fontSize: 12,
+    color: '#B45309',
   },
   saveBtn: {
     backgroundColor: '#F59E0B',

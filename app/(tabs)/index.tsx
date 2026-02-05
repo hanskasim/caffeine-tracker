@@ -51,7 +51,11 @@ export default function DashboardScreen() {
       </View>
 
       {/* Drink Timeline */}
-      <DrinkTimeline drinks={todayDrinks} onDelete={removeDrink} />
+      <DrinkTimeline
+        drinks={todayDrinks}
+        onDelete={removeDrink}
+        onEdit={(id) => router.push(`/log?editId=${id}`)}
+      />
 
       {/* Late Caffeine Warning */}
       <LateCaffeineWarning drinks={todayDrinks} />

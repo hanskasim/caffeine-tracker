@@ -6,9 +6,10 @@ import { format } from 'date-fns';
 interface Props {
   drinks: Drink[];
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
 }
 
-export default function DrinkTimeline({ drinks, onDelete }: Props) {
+export default function DrinkTimeline({ drinks, onDelete, onEdit }: Props) {
   const today = format(new Date(), 'EEEE, MMM d');
 
   const handleLongPress = (drink: Drink) => {
@@ -46,7 +47,11 @@ export default function DrinkTimeline({ drinks, onDelete }: Props) {
           {drinks.map((drink) => (
             <Pressable
               key={drink.id}
-              style={styles.drinkRow}
+              style={({ pressed }) => [
+                styles.drinkRow,
+                pressed && styles.drinkRowPressed,
+              ]}
+              onPress={() => onEdit(drink.id)}
               onLongPress={() => handleLongPress(drink)}
             >
               <Text style={styles.drinkEmoji}>
@@ -176,5 +181,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#B45309',
     marginTop: 2,
+  },
+  drinkRowPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
   },
 });
